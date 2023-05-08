@@ -2,21 +2,22 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"github.com/BurntSushi/toml"
 	_ "github.com/go-sql-driver/mysql"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
-        "encoding/json"
 )
 
 var infoLog = log.New(os.Stdout, "INFO\t", log.Ldate|log.Ltime)
 var errorLog = log.New(os.Stderr, "ERROR\t", log.Ldate|log.Ltime|log.Lshortfile)
 
 type Cssdbconf struct {
-	Impstr string
-	Dbstr  string
+	Impstr  string
+	Dbstr   string
+	Postsql []string
 }
 
 func main() {
@@ -41,11 +42,13 @@ func orgHandler(w http.ResponseWriter, r *http.Request) {
 	if ok {
 		org_no = keys[0]
 	}
-
+	// 创建数据库
 	err := createDb(myconf, org_no)
-        if err != nil {
-               return
-           }
+	if err != nil {
+		return
+	}
+
+	// 导数据
 	str := myconf.Impstr + org_no
 	infoLog.Println(str)
 	output, err := exec.Command("bash", "-c", str).Output()
@@ -54,8 +57,15 @@ func orgHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	infoLog.Println(string(output))
 
-        w.WriteHeader(http.StatusOK)
-        w.Header().Set("Content-Type", "application/json")
+	//后期处理
+	err = flushDb(myconf, org_no)
+	if err != nil {
+		return
+	}
+
+	//返回 status ok
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
 	resp := make(map[string]string)
 	resp["message"] = "Status OK"
 	jsonResp, err := json.Marshal(resp)
@@ -63,7 +73,7 @@ func orgHandler(w http.ResponseWriter, r *http.Request) {
 		errorLog.Fatalf("Error happened in JSON marshal. Err: %s", err)
 	}
 	w.Write(jsonResp)
-        return
+	return
 
 }
 
@@ -77,9 +87,13 @@ func getToml() (c Cssdbconf) {
 	return conf
 }
 
-func createDb(c Cssdbconf, o string)(e error) {
+func createDb(c Cssdbconf, o string) (e error) {
 	infoLog.Println(c.Dbstr)
+	infoLog.Println(len(c.Postsql))
+	infoLog.Println(c.Postsql[0])
 	DB, _ := sql.Open("mysql", c.Dbstr)
+	defer DB.Close()
+
 	DB.SetConnMaxLifetime(100)
 	DB.SetMaxIdleConns(10)
 	if err := DB.Ping(); err != nil {
@@ -97,6 +111,34 @@ func createDb(c Cssdbconf, o string)(e error) {
 		i, _ := ret.RowsAffected()
 		infoLog.Println("i: %v\n", i)
 	}
-       return
+	return
+
+}
+
+func flushDb(c Cssdbconf, o string) (e error) {
+	infoLog.Println(c.Dbstr)
+	DB, _ := sql.Open("mysql", c.Dbstr+"_"+o)
+	defer DB.Close()
+
+	DB.SetConnMaxLifetime(100)
+	DB.SetMaxIdleConns(10)
+	if err := DB.Ping(); err != nil {
+		infoLog.Println("open database fail")
+		return err
+	}
+	infoLog.Println("connnect New born database success...")
+
+	for _, v := range c.Postsql {
+		ret, err := DB.Exec(v + "'" + o + "'")
+		if err != nil {
+			errorLog.Println("create database failed ,err:%v\n", err)
+			return err
+		} else {
+			i, _ := ret.RowsAffected()
+			infoLog.Println("i: %v\n", i)
+		}
+	}
+
+	return
 
 }

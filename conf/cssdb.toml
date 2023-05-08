@@ -1,2 +1,10 @@
 Impstr="mysqldump -usxadmin -psx@123 -h192.168.199.100 -E -R --triggers cs_s_run | mysql -usxadmin -psx@123 -h192.168.199.100 cs_s_run_"
 Dbstr="sxadmin:sx@123@tcp(192.168.199.100:3306)/cs_s_run"
+Postsql=["update cs_apply set org_no =",
+         "update cs_apply_module set org_no =",
+         "update cs_apply_module_file set org_no =",
+         "update cs_apply_module_htmlz set org_no =",
+         "delete from cs_common_user where org_no <>",
+         "delete from cs_org_datasource where org_no <>",
+         "delete from cs_org where org_no <>"
+     ]
