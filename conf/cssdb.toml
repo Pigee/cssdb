@@ -1,0 +1,2 @@
+Impstr="mysqldump -usxadmin -psx@123 -h192.168.199.100 -E -R --triggers cs_s_run | mysql -usxadmin -psx@123 -h192.168.199.100 cs_s_run_"
+Dbstr="sxadmin:sx@123@tcp(192.168.199.100:3306)/cs_s_run"
