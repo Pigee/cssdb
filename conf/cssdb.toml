@@ -6,5 +6,6 @@ Postsql=["update cs_apply set org_no =",
          "update cs_apply_module_htmlz set org_no =",
          "delete from cs_common_user where org_no <>",
          "delete from cs_org_datasource where org_no <>",
-         "delete from cs_org where org_no <>"
+         "delete from cs_org where org_no <>",
+         "insert insert cs_base_user(id,org_no,userid,account,password,mobile,status,flag,if_admin,name) select id,org_no,'' userid,'','',mobile,1,0,1,'' name from cs_common_user"
      ]
