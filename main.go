@@ -8,16 +8,23 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
+        "os/exec"
 )
 
 var infoLog = log.New(os.Stdout, "INFO\t", log.Ldate|log.Ltime)
 var errorLog = log.New(os.Stderr, "ERROR\t", log.Ldate|log.Ltime|log.Lshortfile)
 
+// 配置文件数据结构
 type Cssdbconf struct {
 	Impstr  string
 	Dbstr   string
 	Postsql []string
+}
+
+// Post请求结构
+type ReqData struct {
+	Org_no       string `json:"org_no"`
+	Account_name string `json:"account_name"`
 }
 
 func main() {
@@ -35,21 +42,26 @@ func main() {
 
 func orgHandler(w http.ResponseWriter, r *http.Request) {
 
-	keys, ok := r.URL.Query()["org_no"]
-	org_no := "defaultorgno"
 	myconf := getToml()
 
-	if ok {
-		org_no = keys[0]
+	var reqdata ReqData
+	// 调用json包的解析，解析请求body
+	if err := json.NewDecoder(r.Body).Decode(&reqdata); err != nil {
+		r.Body.Close()
+		log.Fatal(err)
 	}
+
+	//jsonStr, _ := json.Marshal(reqdata)
+	//infoLog.Println("req json: ", string(jsonStr))
+
 	// 创建数据库
-	err := createDb(myconf, org_no)
+	err := createDb(myconf, reqdata.Org_no)
 	if err != nil {
 		return
 	}
 
 	// 导数据
-	str := myconf.Impstr + org_no
+	str := myconf.Impstr + reqdata.Org_no
 	infoLog.Println(str)
 	output, err := exec.Command("bash", "-c", str).Output()
 	if err != nil {
@@ -58,7 +70,13 @@ func orgHandler(w http.ResponseWriter, r *http.Request) {
 	infoLog.Println(string(output))
 
 	//后期处理
-	err = flushDb(myconf, org_no)
+	err = flushDb(myconf, reqdata.Org_no)
+	if err != nil {
+		return
+	}
+
+	//创建cs_base_user纪录
+	err = createBaseuser(myconf, reqdata.Org_no, reqdata.Account_name)
 	if err != nil {
 		return
 	}
@@ -131,12 +149,39 @@ func flushDb(c Cssdbconf, o string) (e error) {
 	for _, v := range c.Postsql {
 		ret, err := DB.Exec(v + "'" + o + "'")
 		if err != nil {
-			errorLog.Println("create database failed ,err:%v\n", err)
+			errorLog.Println("Flush Db failed... ,err:%v\n", err)
 			return err
 		} else {
 			i, _ := ret.RowsAffected()
-			infoLog.Println("i: %v\n", i)
+			infoLog.Println("flushp database successfully...: %v\n", i)
 		}
+	}
+
+	return
+
+}
+
+func createBaseuser(c Cssdbconf, o string, n string) (e error) {
+	infoLog.Println(c.Dbstr)
+	DB, _ := sql.Open("mysql", c.Dbstr+"_"+o)
+	defer DB.Close()
+
+	DB.SetConnMaxLifetime(100)
+	DB.SetMaxIdleConns(10)
+	if err := DB.Ping(); err != nil {
+		infoLog.Println("open database fail")
+		return err
+	}
+	infoLog.Println("connnect New born database success...")
+
+	// infoLog.Println("insert into cs_base_user(id,org_no,userid,account,password,mobile,status,flag,if_admin,name) select id,org_no,'' userid,'','',mobile,1,0,1,'" + n + "' from cs_common_user")
+	ret, err := DB.Exec("insert into cs_base_user(id,org_no,userid,account,password,mobile,status,flag,if_admin,name) select id,org_no,'' userid,'','',mobile,1,0,1,'" + o + "' from cs_common_user")
+	if err != nil {
+		errorLog.Println("create cs_base_user failed ,err:%v\n", err)
+		return err
+	} else {
+		i, _ := ret.RowsAffected()
+		infoLog.Println("create base user success: %v\n", i)
 	}
 
 	return
